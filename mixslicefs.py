@@ -1,8 +1,18 @@
 import sys
 import os
-from fuse import FUSE
+import errno
+import stat
 
 from fuse import FUSE, FuseOSError, Operations
+from aesmix import MixSlice
+
+
+def is_encrypted_data(path=''):
+    return path.endswith('.enc')
+
+
+def is_encrypted_metadata(path=''):
+    return path.endswith('.private') or path.endswith('.public')
 
 
 class MixSliceFS(Operations):
@@ -31,18 +41,40 @@ class MixSliceFS(Operations):
         full_path = self._full_path(path)
         return os.chown(full_path, uid, gid)
 
+    # Attributi di path (file o cartella)
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
+
+        if is_encrypted_data(full_path):
+            st = os.lstat(full_path)
+            return {
+                'st_mode': stat.S_IFREG | 0o666,
+                'st_nlink': 1,
+                'st_atime': st.st_atime,
+                'st_ctime': st.st_ctime,
+                'st_gid': st.st_gid,
+                'st_mtime': st.st_mtime,
+                'st_size': st.st_size,
+                'st_uid': st.st_uid
+            }
+
         st = os.lstat(full_path)
         return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                                                         'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
+    # Elenco di file/cartelle in path
     def readdir(self, path, fh):
         full_path = self._full_path(path)
         dirents = ['.', '..']
 
         if os.path.isdir(full_path):
-            dirents.extend(os.listdir(full_path))
+            real_stuff = os.listdir(full_path)
+            virtual_stuff = [
+                x
+                for x in real_stuff
+                if is_encrypted_data(x) or not is_encrypted_metadata(x)
+            ]
+            dirents.extend(virtual_stuff)
 
         for r in dirents:
             yield r
@@ -55,6 +87,7 @@ class MixSliceFS(Operations):
         else:
             return pathname
 
+    # Equivale a touch
     def mknod(self, path, mode, dev):
         return os.mknod(self._full_path(path), mode, dev)
 
@@ -72,6 +105,7 @@ class MixSliceFS(Operations):
                                                          'f_blocks', 'f_bsize', 'f_favail', 'f_ffree', 'f_files', 'f_flag',
                                                          'f_frsize', 'f_namemax'))
 
+    # Equivale a rm
     def unlink(self, path):
         return os.unlink(self._full_path(path))
 
@@ -97,10 +131,21 @@ class MixSliceFS(Operations):
         full_path = self._full_path(path)
         return os.open(full_path, os.O_WRONLY | os.O_CREAT, mode)
 
+    # Reading a file
     def read(self, path, length, offset, fh):
+        if is_encrypted_data(path):
+            full_path = self._full_path(path)
+            filename = '.'.join(path.split('.')[0:-1])
+            public_key = self._full_path(f'{filename}.public')
+
+            reader = MixSlice.load_from_file(full_path, public_key)
+            plaintext = reader.decrypt()
+            return plaintext[offset:offset + length]
+
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
 
+    # Writing a file
     def write(self, path, buf, offset, fh):
         os.lseek(fh, offset, os.SEEK_SET)
         return os.write(fh, buf)
