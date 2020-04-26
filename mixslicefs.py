@@ -54,6 +54,41 @@ class MixSliceFS(Operations):
         metadata = self._metadata_names(path)
         owner.save_to_files(full_path, metadata['public'], metadata['private'])
 
+    def _open_enc_file(self, path):
+        if path not in self.open_enc_files:
+            self.open_enc_files[path] = self._decrypt(path)
+            self.touched_enc_files[path] = False
+
+    def _read_enc_file(self, path, offset, length):
+        plaintext = self.open_enc_files[path]
+        return plaintext[offset:offset + length]
+
+    def _write_enc_file(self, path, buf, offset):
+        bytes_written = len(buf)
+
+        plaintext = self.open_enc_files[path]
+        new_text = plaintext[:offset] + buf + \
+            plaintext[offset+bytes_written:]
+
+        self.open_enc_files[path] = new_text
+        self.touched_enc_files[path] = True
+
+        return bytes_written
+
+    def _trunc_enc_file(self, path, length):
+        plaintext = self.open_enc_files[path]
+        self.open_enc_files[path] = plaintext[:length]
+        self.touched_enc_files[path] = True
+
+    def _flush_enc_file(self, path):
+        if self.touched_enc_files[path]:
+            self.touched_enc_files[path] = False
+            self._encrypt(path, self.open_enc_files[path])
+
+    def _release_enc_file(self, path):
+        del self.open_enc_files[path]
+        del self.touched_enc_files[path]
+
     # --------------------------------------------------------------------- Filesystem methods
 
     def access(self, path, mode):
@@ -151,11 +186,7 @@ class MixSliceFS(Operations):
     def open(self, path, flags):
         # I .enc sono cartelle, ma li mostro come file
         if is_encrypted_data(path):
-            if path not in self.open_enc_files:
-                plaintext = self._decrypt(path)
-                self.open_enc_files[path] = plaintext
-                self.touched_enc_files[path] = False
-
+            self._open_enc_file(path)
             return 0
 
         full_path = self._full_path(path)
@@ -168,8 +199,7 @@ class MixSliceFS(Operations):
     # Reading a file
     def read(self, path, length, offset, fh):
         if path in self.open_enc_files:
-            plaintext = self.open_enc_files[path]
-            return plaintext[offset:offset + length]
+            return self._read_enc_file(path, offset, length)
 
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
@@ -177,24 +207,14 @@ class MixSliceFS(Operations):
     # Writing a file
     def write(self, path, buf, offset, fh):
         if path in self.open_enc_files:
-            plaintext = self.open_enc_files[path]
-            bytes_to_write = len(buf)
-            new_text = plaintext[:offset] + buf + \
-                plaintext[offset+bytes_to_write:]
-
-            self.open_enc_files[path] = new_text
-            self.touched_enc_files[path] = True
-
-            return bytes_to_write
+            return self._write_enc_file(path, buf, offset)
 
         os.lseek(fh, offset, os.SEEK_SET)
         return os.write(fh, buf)
 
     def truncate(self, path, length, fh=None):
         if path in self.open_enc_files:
-            plaintext = self.open_enc_files[path]
-            self.open_enc_files[path] = plaintext[:length]
-            self.touched_enc_files[path] = True
+            self._trunc_enc_file(path, length)
             return
 
         full_path = self._full_path(path)
@@ -212,8 +232,7 @@ class MixSliceFS(Operations):
 
     def release(self, path, fh):
         if path in self.open_enc_files:
-            del self.open_enc_files[path]
-            del self.touched_enc_files[path]
+            self._release_enc_file(path)
             return 0
 
         return os.close(fh)
