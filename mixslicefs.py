@@ -18,15 +18,43 @@ def is_encrypted_metadata(path=''):
 class MixSliceFS(Operations):
     def __init__(self, root):
         self.root = root
+        self.key = b'K' * 16
+        self.iv = b'I' * 16
 
-    # Helpers
+        # File .enc aperti
+        self.open_enc_files = {}
+        # File .enc effettivamente modificati
+        self.touched_enc_files = {}
+
+    # --------------------------------------------------------------------- Helpers
 
     def _full_path(self, partial):
         partial = partial.lstrip("/")
         path = os.path.join(self.root, partial)
         return path
 
-    # Filesystem methods
+    def _metadata_names(self, path):
+        filename = '.'.join(path.split('.')[0:-1])
+
+        return {
+            'public': self._full_path(f'{filename}.public'),
+            'private': self._full_path(f'{filename}.private')
+        }
+
+    def _decrypt(self, path):
+        full_path = self._full_path(path)
+        metadata = self._metadata_names(path)
+
+        reader = MixSlice.load_from_file(full_path, metadata['public'])
+        return reader.decrypt()
+
+    def _encrypt(self, path, plaintext):
+        owner = MixSlice.encrypt(plaintext, self.key, self.iv)
+        full_path = self._full_path(path)
+        metadata = self._metadata_names(path)
+        owner.save_to_files(full_path, metadata['public'], metadata['private'])
+
+    # --------------------------------------------------------------------- Filesystem methods
 
     def access(self, path, mode):
         full_path = self._full_path(path)
@@ -70,10 +98,7 @@ class MixSliceFS(Operations):
         if os.path.isdir(full_path):
             real_stuff = os.listdir(full_path)
             virtual_stuff = [
-                x
-                for x in real_stuff
-                if is_encrypted_data(x) or not is_encrypted_metadata(x)
-            ]
+                x for x in real_stuff if not is_encrypted_metadata(x)]
             dirents.extend(virtual_stuff)
 
         for r in dirents:
@@ -124,6 +149,15 @@ class MixSliceFS(Operations):
     # File methods
 
     def open(self, path, flags):
+        # I .enc sono cartelle, ma li mostro come file
+        if is_encrypted_data(path):
+            if path not in self.open_enc_files:
+                plaintext = self._decrypt(path)
+                self.open_enc_files[path] = plaintext
+                self.touched_enc_files[path] = False
+
+            return 0
+
         full_path = self._full_path(path)
         return os.open(full_path, flags)
 
@@ -133,13 +167,8 @@ class MixSliceFS(Operations):
 
     # Reading a file
     def read(self, path, length, offset, fh):
-        if is_encrypted_data(path):
-            full_path = self._full_path(path)
-            filename = '.'.join(path.split('.')[0:-1])
-            public_key = self._full_path(f'{filename}.public')
-
-            reader = MixSlice.load_from_file(full_path, public_key)
-            plaintext = reader.decrypt()
+        if path in self.open_enc_files:
+            plaintext = self.open_enc_files[path]
             return plaintext[offset:offset + length]
 
         os.lseek(fh, offset, os.SEEK_SET)
@@ -147,18 +176,46 @@ class MixSliceFS(Operations):
 
     # Writing a file
     def write(self, path, buf, offset, fh):
+        if path in self.open_enc_files:
+            plaintext = self.open_enc_files[path]
+            bytes_to_write = len(buf)
+            new_text = plaintext[:offset] + buf + \
+                plaintext[offset+bytes_to_write:]
+
+            self.open_enc_files[path] = new_text
+            self.touched_enc_files[path] = True
+
+            return bytes_to_write
+
         os.lseek(fh, offset, os.SEEK_SET)
         return os.write(fh, buf)
 
     def truncate(self, path, length, fh=None):
+        if path in self.open_enc_files:
+            plaintext = self.open_enc_files[path]
+            self.open_enc_files[path] = plaintext[:length]
+            self.touched_enc_files[path] = True
+            return
+
         full_path = self._full_path(path)
         with open(full_path, 'r+') as f:
             f.truncate(length)
 
     def flush(self, path, fh):
+        if path in self.open_enc_files:
+            if self.touched_enc_files[path]:
+                self.touched_enc_files[path] = False
+                self._encrypt(path, self.open_enc_files[path])
+            return 0
+
         return os.fsync(fh)
 
     def release(self, path, fh):
+        if path in self.open_enc_files:
+            del self.open_enc_files[path]
+            del self.touched_enc_files[path]
+            return 0
+
         return os.close(fh)
 
     def fsync(self, path, fdatasync, fh):
