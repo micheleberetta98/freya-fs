@@ -32,9 +32,7 @@ class EncFilesManager():
     # ------------------------------------------------------ Methods
 
     def open(self, path, public_metafile_path, private_metafile_path):
-        print(f'Opening {path}')
         if path in self.open_files:
-            print('(i) Already opened')
             return
 
         self.public_metafiles[path] = public_metafile_path
@@ -44,7 +42,6 @@ class EncFilesManager():
         self.touched_files[path] = False
 
     def read_bytes(self, path, offset, length):
-        print(f'Reading {path}')
         if path not in self.open_files:
             return None
 
@@ -52,7 +49,6 @@ class EncFilesManager():
         return plaintext[offset:offset + length]
 
     def write_bytes(self, path, buf, offset):
-        print(f'Writing {path}')
         if path not in self.open_files:
             return 0
 
@@ -68,7 +64,6 @@ class EncFilesManager():
         return bytes_written
 
     def truncate_bytes(self, path, length):
-        print(f'Truncating {path}')
         if path not in self.open_files:
             return
 
@@ -77,7 +72,6 @@ class EncFilesManager():
         self.touched_files[path] = True
 
     def flush(self, path):
-        print(f'Flushing {path}')
         if path not in self.open_files:
             return
 
@@ -86,8 +80,6 @@ class EncFilesManager():
             self._encrypt(path)
 
     def release(self, path):
-        print(f'Releasing {path}')
-        print()
         if path not in self.open_files:
             return
 
