@@ -3,7 +3,7 @@ import os
 import errno
 import stat
 
-from fuse import FUSE, FuseOSError, Operations
+from fuse import FuseOSError, Operations
 from encfilesmanager import EncFilesManager
 
 
@@ -16,8 +16,9 @@ def is_encrypted_metadata(path=''):
 
 
 class MixSliceFS(Operations):
-    def __init__(self, root):
+    def __init__(self, root, metadata=None):
         self.root = root
+        self.metadata_root = metadata if metadata is not None else root
 
         # File .enc aperti
         self.enc_files = EncFilesManager()
@@ -192,10 +193,3 @@ class MixSliceFS(Operations):
 
     def fsync(self, path, fdatasync, fh):
         return self.flush(path, fh)
-
-
-if __name__ == '__main__':
-    root = sys.argv[1]
-    mountpoint = sys.argv[2]
-
-    FUSE(MixSliceFS(root), mountpoint, nothreads=True, foreground=True)
