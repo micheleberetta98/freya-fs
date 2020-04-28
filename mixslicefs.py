@@ -4,7 +4,7 @@ import errno
 import stat
 
 from fuse import FUSE, FuseOSError, Operations
-from aesmix import MixSlice
+from encfilesmanager import EncFilesManager
 
 
 def is_encrypted_data(path=''):
@@ -18,13 +18,9 @@ def is_encrypted_metadata(path=''):
 class MixSliceFS(Operations):
     def __init__(self, root):
         self.root = root
-        self.key = b'K' * 16
-        self.iv = b'I' * 16
 
         # File .enc aperti
-        self.open_enc_files = {}
-        # File .enc effettivamente modificati
-        self.touched_enc_files = {}
+        self.enc_files = EncFilesManager()
 
     # --------------------------------------------------------------------- Helpers
 
@@ -40,54 +36,6 @@ class MixSliceFS(Operations):
             'public': self._full_path(f'{filename}.public'),
             'private': self._full_path(f'{filename}.private')
         }
-
-    def _decrypt(self, path):
-        full_path = self._full_path(path)
-        metadata = self._metadata_names(path)
-
-        reader = MixSlice.load_from_file(full_path, metadata['public'])
-        return reader.decrypt()
-
-    def _encrypt(self, path, plaintext):
-        owner = MixSlice.encrypt(plaintext, self.key, self.iv)
-        full_path = self._full_path(path)
-        metadata = self._metadata_names(path)
-        owner.save_to_files(full_path, metadata['public'], metadata['private'])
-
-    def _open_enc_file(self, path):
-        if path not in self.open_enc_files:
-            self.open_enc_files[path] = self._decrypt(path)
-            self.touched_enc_files[path] = False
-
-    def _read_enc_file(self, path, offset, length):
-        plaintext = self.open_enc_files[path]
-        return plaintext[offset:offset + length]
-
-    def _write_enc_file(self, path, buf, offset):
-        bytes_written = len(buf)
-
-        plaintext = self.open_enc_files[path]
-        new_text = plaintext[:offset] + buf + \
-            plaintext[offset+bytes_written:]
-
-        self.open_enc_files[path] = new_text
-        self.touched_enc_files[path] = True
-
-        return bytes_written
-
-    def _trunc_enc_file(self, path, length):
-        plaintext = self.open_enc_files[path]
-        self.open_enc_files[path] = plaintext[:length]
-        self.touched_enc_files[path] = True
-
-    def _flush_enc_file(self, path):
-        if self.touched_enc_files[path]:
-            self.touched_enc_files[path] = False
-            self._encrypt(path, self.open_enc_files[path])
-
-    def _release_enc_file(self, path):
-        del self.open_enc_files[path]
-        del self.touched_enc_files[path]
 
     # --------------------------------------------------------------------- Filesystem methods
 
@@ -181,15 +129,18 @@ class MixSliceFS(Operations):
     def utimens(self, path, times=None):
         return os.utime(self._full_path(path), times)
 
-    # File methods
+    # --------------------------------------------------------------------- File methods
 
     def open(self, path, flags):
+        full_path = self._full_path(path)
+
         # I .enc sono cartelle, ma li mostro come file
-        if is_encrypted_data(path):
-            self._open_enc_file(path)
+        if is_encrypted_data(full_path):
+            metadata = self._metadata_names(path)
+            self.enc_files.open(
+                full_path, metadata['public'], metadata['private'])
             return 0
 
-        full_path = self._full_path(path)
         return os.open(full_path, flags)
 
     def create(self, path, mode, fi=None):
@@ -198,41 +149,43 @@ class MixSliceFS(Operations):
 
     # Reading a file
     def read(self, path, length, offset, fh):
-        if path in self.open_enc_files:
-            return self._read_enc_file(path, offset, length)
+        full_path = self._full_path(path)
+        if full_path in self.enc_files:
+            return self.enc_files.read_bytes(full_path, offset, length)
 
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
 
     # Writing a file
     def write(self, path, buf, offset, fh):
-        if path in self.open_enc_files:
-            return self._write_enc_file(path, buf, offset)
+        full_path = self._full_path(path)
+        if full_path in self.enc_files:
+            return self.enc_files.write_bytes(full_path, buf, offset)
 
         os.lseek(fh, offset, os.SEEK_SET)
         return os.write(fh, buf)
 
     def truncate(self, path, length, fh=None):
-        if path in self.open_enc_files:
-            self._trunc_enc_file(path, length)
+        full_path = self._full_path(path)
+        if full_path in self.enc_files:
+            self.enc_files.truncate_bytes(full_path, length)
             return
 
-        full_path = self._full_path(path)
         with open(full_path, 'r+') as f:
             f.truncate(length)
 
     def flush(self, path, fh):
-        if path in self.open_enc_files:
-            if self.touched_enc_files[path]:
-                self.touched_enc_files[path] = False
-                self._encrypt(path, self.open_enc_files[path])
+        full_path = self._full_path(path)
+        if full_path in self.enc_files:
+            self.enc_files.flush(full_path)
             return 0
 
         return os.fsync(fh)
 
     def release(self, path, fh):
-        if path in self.open_enc_files:
-            self._release_enc_file(path)
+        full_path = self._full_path(path)
+        if full_path in self.enc_files:
+            self.enc_files.release(full_path)
             return 0
 
         return os.close(fh)
