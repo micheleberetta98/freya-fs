@@ -15,28 +15,39 @@ def is_encrypted_metadata(path=''):
     return path.endswith('.private') or path.endswith('.public')
 
 
+def join_paths(root, partial):
+    return os.path.join(root, partial.lstrip('/'))
+
+
+def enc_filename(path=''):
+    parts = path.lstrip('/').split('/')
+    full_filename = parts[-1]
+    return '.'.join(full_filename.split('.')[:-1])
+
+
 class MixSliceFS(Operations):
-    def __init__(self, root, metadata=None):
+    def __init__(self, root, metadata_root=None):
         self.root = root
-        self.metadata_root = metadata if metadata is not None else root
+        self.metadata_root = metadata_root if metadata_root is not None else root
 
         # File .enc aperti
         self.enc_files = EncFilesManager()
 
     # --------------------------------------------------------------------- Helpers
 
-    def _full_path(self, partial):
-        partial = partial.lstrip("/")
-        path = os.path.join(self.root, partial)
-        return path
+    def _full_path(self, path):
+        return join_paths(self.root, path)
+
+    def _metadata_full_path(self, path):
+        return join_paths(self.metadata_root, path)
 
     def _metadata_names(self, path):
-        filename = '.'.join(path.split('.')[0:-1])
+        filename = enc_filename(path)
 
-        return {
-            'public': self._full_path(f'{filename}.public'),
-            'private': self._full_path(f'{filename}.private')
-        }
+        public = self._metadata_full_path(f'{filename}.public')
+        private = self._metadata_full_path(f'{filename}.private')
+
+        return public, private
 
     # --------------------------------------------------------------------- Filesystem methods
 
@@ -137,9 +148,9 @@ class MixSliceFS(Operations):
 
         # I .enc sono cartelle, ma li mostro come file
         if is_encrypted_data(full_path):
-            metadata = self._metadata_names(path)
+            public_metadata, private_metadata = self._metadata_names(path)
             self.enc_files.open(
-                full_path, metadata['public'], metadata['private'])
+                full_path, public_metadata, private_metadata)
             return 0
 
         return os.open(full_path, flags)
