@@ -5,6 +5,7 @@ import stat
 
 from fuse import FuseOSError, Operations
 from encfilesmanager import EncFilesManager
+from encfilesinfo import EncFilesInfo
 
 
 def is_encrypted_data(path=''):
@@ -32,6 +33,7 @@ class MixSliceFS(Operations):
 
         # File .enc aperti
         self.enc_files = EncFilesManager()
+        self.enc_info = {}
 
     # --------------------------------------------------------------------- Helpers
 
@@ -46,8 +48,12 @@ class MixSliceFS(Operations):
 
         public = self._metadata_full_path(f'{filename}.public')
         private = self._metadata_full_path(f'{filename}.private')
+        finfo = self._metadata_full_path(f'{filename}.finfo')
 
-        return public, private
+        return public, private, finfo
+
+    def _update_enc_file_size(self, path):
+        self.enc_info[path].size = self.enc_files.cur_size(path)
 
     # --------------------------------------------------------------------- Filesystem methods
 
@@ -70,6 +76,11 @@ class MixSliceFS(Operations):
 
         if is_encrypted_data(full_path):
             st = os.lstat(full_path)
+
+            if full_path not in self.enc_info:
+                public_metadata, _, finfo = self._metadata_names(path)
+                self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
+
             return {
                 'st_mode': stat.S_IFREG | 0o666,
                 'st_nlink': 1,
@@ -77,7 +88,7 @@ class MixSliceFS(Operations):
                 'st_ctime': st.st_ctime,
                 'st_gid': st.st_gid,
                 'st_mtime': st.st_mtime,
-                'st_size': st.st_size,
+                'st_size': self.enc_info[full_path].size,
                 'st_uid': st.st_uid
             }
 
@@ -148,7 +159,7 @@ class MixSliceFS(Operations):
 
         # I .enc sono cartelle, ma li mostro come file
         if is_encrypted_data(full_path):
-            public_metadata, private_metadata = self._metadata_names(path)
+            public_metadata, private_metadata, _ = self._metadata_names(path)
             self.enc_files.open(
                 full_path, public_metadata, private_metadata)
             return 0
@@ -172,7 +183,9 @@ class MixSliceFS(Operations):
     def write(self, path, buf, offset, fh):
         full_path = self._full_path(path)
         if full_path in self.enc_files:
-            return self.enc_files.write_bytes(full_path, buf, offset)
+            bytes_written = self.enc_files.write_bytes(full_path, buf, offset)
+            self._update_enc_file_size(full_path)
+            return bytes_written
 
         os.lseek(fh, offset, os.SEEK_SET)
         return os.write(fh, buf)
@@ -181,6 +194,7 @@ class MixSliceFS(Operations):
         full_path = self._full_path(path)
         if full_path in self.enc_files:
             self.enc_files.truncate_bytes(full_path, length)
+            self._update_enc_file_size(full_path)
             return
 
         with open(full_path, 'r+') as f:

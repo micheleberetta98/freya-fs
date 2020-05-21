@@ -27,7 +27,7 @@ class EncFilesManager():
         private_metafile = self.private_metafiles[path]
 
         owner = MixSlice.encrypt(plaintext, self.key, self.iv)
-        owner.save_to_files(path, public_metafile, public_metafile)
+        owner.save_to_files(path, public_metafile, private_metafile)
 
     # ------------------------------------------------------ Methods
 
@@ -87,3 +87,9 @@ class EncFilesManager():
         del self.touched_files[path]
         del self.public_metafiles[path]
         del self.private_metafiles[path]
+
+    def cur_size(self, path):
+        if path not in self.open_files:
+            return 0
+
+        return len(self.open_files[path])

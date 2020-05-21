@@ -20,11 +20,6 @@ parser.add_argument('-m', '--metadata',
                     If not specified, the --data folder will be used.''',
                     default=None
                     )
-parser.add_argument('-f', '--foreground',
-                    action='store_true',
-                    help='Flags that keeps this process in the foreground',
-                    default=False
-                    )
 
 args = parser.parse_args()
 
@@ -32,7 +27,6 @@ if __name__ == '__main__':
     data = args.data
     metadata = args.metadata
     mountpoint = args.mountpoint
-    foreground = args.foreground
 
     FUSE(MixSliceFS(data, metadata), mountpoint,
-         nothreads=True, foreground=foreground)
+         nothreads=True, foreground=True)
