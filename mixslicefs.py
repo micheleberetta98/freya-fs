@@ -8,10 +8,6 @@ from encfilesmanager import EncFilesManager
 from encfilesinfo import EncFilesInfo
 
 
-def is_encrypted_data(path=''):
-    return path.endswith('.enc')
-
-
 def is_encrypted_metadata(path=''):
     return path.endswith('.private') or path.endswith('.public')
 
@@ -23,7 +19,11 @@ def join_paths(root, partial):
 def enc_filename(path=''):
     parts = path.lstrip('/').split('/')
     full_filename = parts[-1]
-    return '.'.join(full_filename.split('.')[:-1])
+
+    if full_filename.endswith('.enc'):
+        return '.'.join(full_filename.split('.')[:-1])
+
+    return full_filename
 
 
 class MixSliceFS(Operations):
@@ -73,28 +73,26 @@ class MixSliceFS(Operations):
     # Attributi di path (file o cartella)
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
-
-        if is_encrypted_data(full_path):
-            st = os.lstat(full_path)
-
-            if full_path not in self.enc_info:
-                public_metadata, _, finfo = self._metadata_names(path)
-                self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
-
-            return {
-                'st_mode': stat.S_IFREG | 0o666,
-                'st_nlink': 1,
-                'st_atime': st.st_atime,
-                'st_ctime': st.st_ctime,
-                'st_gid': st.st_gid,
-                'st_mtime': st.st_mtime,
-                'st_size': self.enc_info[full_path].size,
-                'st_uid': st.st_uid
-            }
-
         st = os.lstat(full_path)
-        return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
+        
+        if path == '/':
+            return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                                                         'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+        
+        if full_path not in self.enc_info:
+            public_metadata, _, finfo = self._metadata_names(path)
+            self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
+
+        return {
+            'st_mode': stat.S_IFREG | 0o666,
+            'st_nlink': 1,
+            'st_atime': st.st_atime,
+            'st_ctime': st.st_ctime,
+            'st_gid': st.st_gid,
+            'st_mtime': st.st_mtime,
+            'st_size': self.enc_info[full_path].size,
+            'st_uid': st.st_uid
+        }
 
     # Elenco di file/cartelle in path
     def readdir(self, path, fh):
@@ -144,7 +142,16 @@ class MixSliceFS(Operations):
         return os.symlink(name, self._full_path(target))
 
     def rename(self, old, new):
-        return os.rename(self._full_path(old), self._full_path(new))
+        full_old_path = self._full_path(old)
+        full_new_path = self._full_path(new)
+
+        old_public_metadata, old_private_metadata, old_finfo = self._metadata_names(old)
+        new_public_metadata, new_private_metadata, new_finfo = self._metadata_names(new)
+
+        os.rename(full_old_path, full_new_path)
+        os.rename(old_public_metadata, new_public_metadata)
+        os.rename(old_private_metadata, new_private_metadata)
+        os.rename(old_finfo, new_finfo)
 
     def link(self, target, name):
         return os.link(self._full_path(target), self._full_path(name))
@@ -158,17 +165,16 @@ class MixSliceFS(Operations):
         full_path = self._full_path(path)
 
         # I .enc sono cartelle, ma li mostro come file
-        if is_encrypted_data(full_path):
-            public_metadata, private_metadata, _ = self._metadata_names(path)
-            self.enc_files.open(
-                full_path, public_metadata, private_metadata)
-            return 0
-
-        return os.open(full_path, flags)
+        public_metadata, private_metadata, _ = self._metadata_names(path)
+        self.enc_files.open(
+            full_path, public_metadata, private_metadata)
+        return 0
 
     def create(self, path, mode, fi=None):
         full_path = self._full_path(path)
-        return os.open(full_path, os.O_WRONLY | os.O_CREAT, mode)
+        public_metadata, private_metadata, _ = self._metadata_names(path)
+        self.enc_files.create(full_path, public_metadata, private_metadata)
+        return 0
 
     # Reading a file
     def read(self, path, length, offset, fh):

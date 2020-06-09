@@ -41,6 +41,13 @@ class EncFilesManager():
         self.open_files[path] = self._decrypt(path)
         self.touched_files[path] = False
 
+    def create(self, path, public_metafile_path, private_metafile_path):
+        self.public_metafiles[path] = public_metafile_path
+        self.private_metafiles[path] = private_metafile_path
+
+        self.open_files[path] = b''
+        self.touched_files[path] = True
+
     def read_bytes(self, path, offset, length):
         if path not in self.open_files:
             return None
