@@ -79,20 +79,24 @@ class MixSliceFS(Operations):
             return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                                                         'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
         
-        if full_path not in self.enc_info:
-            public_metadata, _, finfo = self._metadata_names(path)
-            self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
+        try:
+            if full_path not in self.enc_info:
+                public_metadata, _, finfo = self._metadata_names(path)
+                self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
 
-        return {
-            'st_mode': stat.S_IFREG | 0o666,
-            'st_nlink': 1,
-            'st_atime': st.st_atime,
-            'st_ctime': st.st_ctime,
-            'st_gid': st.st_gid,
-            'st_mtime': st.st_mtime,
-            'st_size': self.enc_info[full_path].size,
-            'st_uid': st.st_uid
-        }
+            return {
+                'st_mode': stat.S_IFREG | 0o666,
+                'st_nlink': 1,
+                'st_atime': st.st_atime,
+                'st_ctime': st.st_ctime,
+                'st_gid': st.st_gid,
+                'st_mtime': st.st_mtime,
+                'st_size': self.enc_info[full_path].size,
+                'st_uid': st.st_uid
+            }
+        except:
+            return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
+                                                        'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
     # Elenco di file/cartelle in path
     def readdir(self, path, fh):
@@ -116,7 +120,6 @@ class MixSliceFS(Operations):
         else:
             return pathname
 
-    # Equivale a touch
     def mknod(self, path, mode, dev):
         return os.mknod(self._full_path(path), mode, dev)
 
@@ -134,7 +137,6 @@ class MixSliceFS(Operations):
                                                          'f_blocks', 'f_bsize', 'f_favail', 'f_ffree', 'f_files', 'f_flag',
                                                          'f_frsize', 'f_namemax'))
 
-    # Equivale a rm
     def unlink(self, path):
         return os.unlink(self._full_path(path))
 
