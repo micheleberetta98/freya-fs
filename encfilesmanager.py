@@ -48,6 +48,8 @@ class EncFilesManager():
         self.open_files[path] = b''
         self.touched_files[path] = True
 
+        self.flush(path)
+
     def read_bytes(self, path, offset, length):
         if path not in self.open_files:
             return None

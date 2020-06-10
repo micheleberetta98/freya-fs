@@ -183,6 +183,14 @@ class MixSliceFS(Operations):
         return 0
 
     def create(self, path, mode, fi=None):
+        filename = path.split('/')[-1]
+
+        # I file nascosti sono gestiti principalmente da interfaccia grafica
+        # Alla loro creazione, vengono gestiti dal sistema
+        # Tramite "touch", però, non viene permessa la loro creazione
+        if filename.startswith('.'):
+            return os.open(path, os.O_WRONLY | os.O_CREAT, mode)
+
         full_path = self._full_path(path)
         public_metadata, private_metadata, _ = self._metadata_names(path)
         self.enc_files.create(full_path, public_metadata, private_metadata)
