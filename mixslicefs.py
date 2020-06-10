@@ -2,6 +2,7 @@ import sys
 import os
 import errno
 import stat
+import shutil
 
 from fuse import FuseOSError, Operations
 from encfilesmanager import EncFilesManager
@@ -138,7 +139,15 @@ class MixSliceFS(Operations):
                                                          'f_frsize', 'f_namemax'))
 
     def unlink(self, path):
-        return os.unlink(self._full_path(path))
+        full_path = self._full_path(path)
+        public_metadata, private_metadata, finfo = self._metadata_names(path)
+
+        os.unlink(public_metadata)
+        os.unlink(private_metadata)
+        if os.path.isfile(finfo):
+            os.unlink(finfo)
+        shutil.rmtree(full_path)
+        return
 
     def symlink(self, name, target):
         return os.symlink(name, self._full_path(target))
@@ -150,10 +159,11 @@ class MixSliceFS(Operations):
         old_public_metadata, old_private_metadata, old_finfo = self._metadata_names(old)
         new_public_metadata, new_private_metadata, new_finfo = self._metadata_names(new)
 
-        os.rename(full_old_path, full_new_path)
         os.rename(old_public_metadata, new_public_metadata)
         os.rename(old_private_metadata, new_private_metadata)
-        os.rename(old_finfo, new_finfo)
+        if os.path.isfile(old_finfo):
+            os.rename(old_finfo, new_finfo)
+        os.rename(full_old_path, full_new_path)
 
     def link(self, target, name):
         return os.link(self._full_path(target), self._full_path(name))
