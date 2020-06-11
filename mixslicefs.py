@@ -86,7 +86,7 @@ class MixSliceFS(Operations):
                 self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
 
             return {
-                'st_mode': stat.S_IFREG | 0o666,
+                'st_mode': stat.S_IFREG | (st.st_mode & ~stat.S_IFDIR),
                 'st_nlink': 1,
                 'st_atime': st.st_atime,
                 'st_ctime': st.st_ctime,
@@ -99,7 +99,6 @@ class MixSliceFS(Operations):
             return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                                                         'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
-    # Elenco di file/cartelle in path
     def readdir(self, path, fh):
         full_path = self._full_path(path)
         dirents = ['.', '..']
@@ -176,7 +175,6 @@ class MixSliceFS(Operations):
     def open(self, path, flags):
         full_path = self._full_path(path)
 
-        # I .enc sono cartelle, ma li mostro come file
         public_metadata, private_metadata, _ = self._metadata_names(path)
         self.enc_files.open(
             full_path, public_metadata, private_metadata)
@@ -196,7 +194,6 @@ class MixSliceFS(Operations):
         self.enc_files.create(full_path, public_metadata, private_metadata)
         return 0
 
-    # Reading a file
     def read(self, path, length, offset, fh):
         full_path = self._full_path(path)
         if full_path in self.enc_files:
@@ -205,7 +202,6 @@ class MixSliceFS(Operations):
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
 
-    # Writing a file
     def write(self, path, buf, offset, fh):
         full_path = self._full_path(path)
         if full_path in self.enc_files:
