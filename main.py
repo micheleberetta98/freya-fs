@@ -1,10 +1,10 @@
 from argparse import ArgumentParser
 from fuse import FUSE, FuseOSError, Operations
 
-from mixslicefs import MixSliceFS
+from freyafs import FreyaFS
 
 parser = ArgumentParser(
-    description="Mix & Slice File System - a virtual file system that supports Mix & Slice encryption")
+    description="Freya File System - a virtual file system that supports Mix&Slice encryption")
 
 parser.add_argument('mountpoint',
                     metavar='MOUNT',
@@ -28,5 +28,5 @@ if __name__ == '__main__':
     metadata = args.metadata
     mountpoint = args.mountpoint
 
-    FUSE(MixSliceFS(data, metadata), mountpoint,
+    FUSE(FreyaFS(data, metadata), mountpoint,
          nothreads=True, foreground=True)

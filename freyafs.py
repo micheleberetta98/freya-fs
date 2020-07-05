@@ -27,7 +27,7 @@ def enc_filename(path=''):
     return full_filename
 
 
-class MixSliceFS(Operations):
+class FreyaFS(Operations):
     def __init__(self, root, metadata_root=None):
         self.root = root
         self.metadata_root = metadata_root if metadata_root is not None else root
@@ -75,15 +75,16 @@ class MixSliceFS(Operations):
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
         st = os.lstat(full_path)
-        
+
         if path == '/':
             return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
-                                                        'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
-        
+                                                            'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+
         try:
             if full_path not in self.enc_info:
                 public_metadata, _, finfo = self._metadata_names(path)
-                self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
+                self.enc_info[full_path] = EncFilesInfo(
+                    full_path, public_metadata, finfo)
 
             return {
                 'st_mode': stat.S_IFREG | (st.st_mode & ~stat.S_IFDIR),
@@ -97,7 +98,7 @@ class MixSliceFS(Operations):
             }
         except:
             return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
-                                                        'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+                                                            'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
     def readdir(self, path, fh):
         full_path = self._full_path(path)
