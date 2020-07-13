@@ -97,10 +97,10 @@ class EncFilesManager():
         if path not in self.open_files:
             return
 
+        os.utime(path, (self.atimes[path], self.mtimes[path]))
         if not self.touched_files[path]:
             return
-    
-        os.utime(path, (self.atimes[path], self.mtimes[path]))
+
         self.touched_files[path] = False
         self._encrypt(path)
 
