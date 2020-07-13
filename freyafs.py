@@ -17,14 +17,11 @@ def join_paths(root, partial):
     return os.path.join(root, partial.lstrip('/'))
 
 
-def enc_filename(path=''):
-    parts = path.lstrip('/').split('/')
-    full_filename = parts[-1]
+def strip_dot_enc(path=''):
+    if path.endswith('.enc'):
+        return '.'.join(path.split('.')[:-1])
 
-    if full_filename.endswith('.enc'):
-        return '.'.join(full_filename.split('.')[:-1])
-
-    return full_filename
+    return path
 
 
 class FreyaFS(Operations):
@@ -45,7 +42,7 @@ class FreyaFS(Operations):
         return join_paths(self.metadata_root, path)
 
     def _metadata_names(self, path):
-        filename = enc_filename(path)
+        filename = strip_dot_enc(path)
 
         public = self._metadata_full_path(f'{filename}.public')
         private = self._metadata_full_path(f'{filename}.private')
@@ -53,8 +50,15 @@ class FreyaFS(Operations):
 
         return public, private, finfo
 
-    def _update_enc_file_size(self, path):
-        self.enc_info[path].size = self.enc_files.cur_size(path)
+    def _update_enc_file_size(self, full_path):
+        self.enc_info[full_path].size = self.enc_files.cur_size(full_path)
+
+    def _is_file(self, path):
+        if not os.path.exists(self._full_path(path)):
+            return False
+
+        attr = self.getattr(path)
+        return attr['st_mode'] & stat.S_IFREG == stat.S_IFREG
 
     # --------------------------------------------------------------------- Filesystem methods
 
@@ -125,11 +129,12 @@ class FreyaFS(Operations):
         return os.mknod(self._full_path(path), mode, dev)
 
     def rmdir(self, path):
-        full_path = self._full_path(path)
-        return os.rmdir(full_path)
+        os.rmdir(self._full_path(path))
+        os.rmdir(self._metadata_full_path(path))
 
     def mkdir(self, path, mode):
-        return os.mkdir(self._full_path(path), mode)
+        os.mkdir(self._full_path(path), mode)
+        os.mkdir(self._metadata_full_path(path), mode)
 
     def statfs(self, path):
         full_path = self._full_path(path)
@@ -146,6 +151,10 @@ class FreyaFS(Operations):
         os.unlink(private_metadata)
         if os.path.isfile(finfo):
             os.unlink(finfo)
+
+        if full_path in self.enc_info:
+            del self.enc_info[full_path]
+
         shutil.rmtree(full_path)
         return
 
@@ -169,7 +178,12 @@ class FreyaFS(Operations):
         return os.link(self._full_path(target), self._full_path(name))
 
     def utimens(self, path, times=None):
-        return os.utime(self._full_path(path), times)
+        os.utime(self._full_path(path), times)
+
+        public_metadata, private_metadata, finfo_metadata = self._metadata_names(path)
+        os.utime(public_metadata, times)
+        os.utime(private_metadata, times)
+        os.utime(finfo_metadata, times)
 
     # --------------------------------------------------------------------- File methods
 
