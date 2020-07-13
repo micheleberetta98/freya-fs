@@ -30,6 +30,15 @@ class EncFilesInfo():
         with open(self._file_finfo, 'w') as f:
             json.dump(finfo, f)
 
+    # ------------------------------------------------------ Methods
+
+    def rename(self, path, public_metadata, file_finfo):
+        self._path = path
+        self._public_metadata = public_metadata
+        self._file_finfo = file_finfo
+
+        self._size = None
+
     # ------------------------------------------------------ Size
 
     @property

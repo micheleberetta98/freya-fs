@@ -165,14 +165,29 @@ class FreyaFS(Operations):
         full_old_path = self._full_path(old)
         full_new_path = self._full_path(new)
 
-        old_public_metadata, old_private_metadata, old_finfo = self._metadata_names(old)
-        new_public_metadata, new_private_metadata, new_finfo = self._metadata_names(new)
+        if self._is_file(old):
+            # Rinomino un file
+            if self._is_file(new):
+                self.unlink(new)
 
-        os.rename(old_public_metadata, new_public_metadata)
-        os.rename(old_private_metadata, new_private_metadata)
-        if os.path.isfile(old_finfo):
-            os.rename(old_finfo, new_finfo)
-        os.rename(full_old_path, full_new_path)
+            old_public_metadata, old_private_metadata, old_finfo = self._metadata_names(old)
+            new_public_metadata, new_private_metadata, new_finfo = self._metadata_names(new)
+
+            os.rename(old_public_metadata, new_public_metadata)
+            os.rename(old_private_metadata, new_private_metadata)
+            if os.path.isfile(old_finfo):
+                os.rename(old_finfo, new_finfo)
+
+            os.rename(full_old_path, full_new_path)
+            
+            if full_old_path in self.enc_info:
+                self.enc_info[full_old_path].rename(full_new_path, new_public_metadata, new_finfo)
+        else:
+            # Rinomino una cartella
+            old_metadata_path = self._metadata_full_path(old)
+            new_metadata_path = self._metadata_full_path(new)            
+            os.rename(old_metadata_path, new_metadata_path)
+            os.rename(full_old_path, full_new_path)
 
     def link(self, target, name):
         return os.link(self._full_path(target), self._full_path(name))
