@@ -1,4 +1,7 @@
+import os
+
 from aesmix import MixSlice
+from time import time
 
 
 class EncFilesManager():
@@ -10,6 +13,9 @@ class EncFilesManager():
         self.touched_files = {}
         self.public_metafiles = {}
         self.private_metafiles = {}
+
+        self.atimes = {}
+        self.mtimes = {}
 
     def __contains__(self, path):
         return path in self.open_files
@@ -31,7 +37,7 @@ class EncFilesManager():
 
     # ------------------------------------------------------ Methods
 
-    def open(self, path, public_metafile_path, private_metafile_path):
+    def open(self, path, public_metafile_path, private_metafile_path, mtime):
         if path in self.open_files:
             return
 
@@ -41,12 +47,17 @@ class EncFilesManager():
         self.open_files[path] = self._decrypt(path)
         self.touched_files[path] = False
 
+        self.atimes[path] = int(time())
+        self.mtimes[path] = mtime
+
     def create(self, path, public_metafile_path, private_metafile_path):
         self.public_metafiles[path] = public_metafile_path
         self.private_metafiles[path] = private_metafile_path
 
         self.open_files[path] = b''
         self.touched_files[path] = True
+        self.atimes[path] = int(time())
+        self.mtimes[path] = self.atimes[path]
 
         self.flush(path)
 
@@ -69,6 +80,7 @@ class EncFilesManager():
 
         self.open_files[path] = new_text
         self.touched_files[path] = True
+        self.mtimes[path] = int(time())
 
         return bytes_written
 
@@ -79,14 +91,18 @@ class EncFilesManager():
         plaintext = self.open_files[path]
         self.open_files[path] = plaintext[:length]
         self.touched_files[path] = True
+        self.mtimes[path] = int(time())
 
     def flush(self, path):
         if path not in self.open_files:
             return
 
-        if self.touched_files[path]:
-            self.touched_files[path] = False
-            self._encrypt(path)
+        if not self.touched_files[path]:
+            return
+    
+        os.utime(path, (self.atimes[path], self.mtimes[path]))
+        self.touched_files[path] = False
+        self._encrypt(path)
 
     def release(self, path):
         if path not in self.open_files:
@@ -96,6 +112,8 @@ class EncFilesManager():
         del self.touched_files[path]
         del self.public_metafiles[path]
         del self.private_metafiles[path]
+        del self.atimes[path]
+        del self.mtimes[path]
 
     def cur_size(self, path):
         if path not in self.open_files:

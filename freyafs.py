@@ -206,8 +206,8 @@ class FreyaFS(Operations):
         full_path = self._full_path(path)
 
         public_metadata, private_metadata, _ = self._metadata_names(path)
-        self.enc_files.open(
-            full_path, public_metadata, private_metadata)
+        attr = self.getattr(path)
+        self.enc_files.open(full_path, public_metadata, private_metadata, attr['st_mtime'])
         return 0
 
     def create(self, path, mode, fi=None):
