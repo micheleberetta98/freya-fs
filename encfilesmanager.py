@@ -109,10 +109,10 @@ class EncFilesManager():
         file_already_exists = os.path.exists(path)
         if file_already_exists:
             os.utime(path, (self.atimes[path], self.mtimes[path]))
-        
+
         if not self.touched_files[path]:
             return
-    
+
         self.touched_files[path] = False
         self._encrypt(path)
         if not file_already_exists:
