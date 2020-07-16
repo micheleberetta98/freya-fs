@@ -10,6 +10,7 @@ class EncFilesManager():
         self.iv = iv if iv is not None else b'I' * 16
 
         self.open_files = {}
+        self.open_counters = {}
         self.touched_files = {}
         self.public_metafiles = {}
         self.private_metafiles = {}
@@ -39,25 +40,33 @@ class EncFilesManager():
 
     def open(self, path, public_metafile_path, private_metafile_path, mtime):
         if path in self.open_files:
+            self.open_counters[path] += 1
             return
 
         self.public_metafiles[path] = public_metafile_path
         self.private_metafiles[path] = private_metafile_path
 
         self.open_files[path] = self._decrypt(path)
+        self.open_counters[path] = 1
         self.touched_files[path] = False
 
         self.atimes[path] = int(time())
         self.mtimes[path] = mtime
 
     def create(self, path, public_metafile_path, private_metafile_path):
-        self.public_metafiles[path] = public_metafile_path
-        self.private_metafiles[path] = private_metafile_path
+        if path not in self.open_files:
+            self.public_metafiles[path] = public_metafile_path
+            self.private_metafiles[path] = private_metafile_path
+            
+            self.open_files[path] = b''
+            self.open_counters[path] = 1
+            
+            self.atimes[path] = int(time())
+            self.mtimes[path] = self.atimes[path]
+        else:
+            self.open_counters[path] += 1
 
-        self.open_files[path] = b''
         self.touched_files[path] = True
-        self.atimes[path] = int(time())
-        self.mtimes[path] = self.atimes[path]
 
         self.flush(path)
 
@@ -97,18 +106,30 @@ class EncFilesManager():
         if path not in self.open_files:
             return
 
+        file_already_exists = os.path.exists(path)
+        if file_already_exists:
+            os.utime(path, (self.atimes[path], self.mtimes[path]))
+        
         if not self.touched_files[path]:
             return
     
-        os.utime(path, (self.atimes[path], self.mtimes[path]))
         self.touched_files[path] = False
         self._encrypt(path)
+        if not file_already_exists:
+            os.utime(path, (self.atimes[path], self.mtimes[path]))
+
 
     def release(self, path):
         if path not in self.open_files:
             return
 
+        self.open_counters[path] -= 1
+
+        if self.open_counters[path] > 0:
+            return
+
         del self.open_files[path]
+        del self.open_counters[path]
         del self.touched_files[path]
         del self.public_metafiles[path]
         del self.private_metafiles[path]

@@ -214,10 +214,10 @@ class FreyaFS(Operations):
         filename = path.split('/')[-1]
 
         # I file nascosti sono gestiti principalmente da interfaccia grafica
-        # Alla loro creazione, vengono gestiti dal sistema
-        # Tramite "touch", però, non viene permessa la loro creazione
+        # come file temporanei. Il continuo cifrae e decifreare questi file
+        # può non essere ottimale
         if filename.startswith('.'):
-            return os.open(path, os.O_WRONLY | os.O_CREAT, mode)
+            return 0
 
         full_path = self._full_path(path)
         public_metadata, private_metadata, _ = self._metadata_names(path)
