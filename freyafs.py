@@ -78,17 +78,17 @@ class FreyaFS(Operations):
     # Attributi di path (file o cartella)
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
+        public_metadata, _, finfo = self._metadata_names(path)
+        
         st = os.lstat(full_path)
 
-        if path == '/':
+        if path == '/' or not os.path.exists(public_metadata):
             return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                                                             'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
         try:
             if full_path not in self.enc_info:
-                public_metadata, _, finfo = self._metadata_names(path)
-                self.enc_info[full_path] = EncFilesInfo(
-                    full_path, public_metadata, finfo)
+                self.enc_info[full_path] = EncFilesInfo(full_path, public_metadata, finfo)
 
             return {
                 'st_mode': stat.S_IFREG | (st.st_mode & ~stat.S_IFDIR),
