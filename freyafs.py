@@ -216,14 +216,6 @@ class FreyaFS(Operations):
         return 0
 
     def create(self, path, mode, fi=None):
-        filename = path.split('/')[-1]
-
-        # I file nascosti sono gestiti principalmente da interfaccia grafica
-        # come file temporanei. Il continuo cifrae e decifreare questi file
-        # può non essere ottimale
-        if filename.startswith('.'):
-            return 0
-
         full_path = self._full_path(path)
         public_metadata, private_metadata, _ = self._metadata_names(path)
         self.enc_files.create(full_path, public_metadata, private_metadata)
