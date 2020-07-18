@@ -141,3 +141,23 @@ class EncFilesManager():
             return 0
 
         return len(self.open_files[path])
+
+    def rename(self, old, new):
+        if old not in self.open_files:
+            return
+
+        self.open_files[new] = self.open_files[old]
+        self.open_counters[new] = self.open_counters[old]
+        self.touched_files[new] = self.touched_files[old]
+        self.public_metafiles[new] = self.public_metafiles[old]
+        self.private_metafiles[new] = self.private_metafiles[old]
+        self.atimes[new] = self.atimes[old]
+        self.mtimes[new] = self.mtimes[old]
+
+        del self.open_files[old]
+        del self.open_counters[old]
+        del self.touched_files[old]
+        del self.public_metafiles[old]
+        del self.private_metafiles[old]
+        del self.atimes[old]
+        del self.mtimes[old]

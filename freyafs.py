@@ -179,9 +179,14 @@ class FreyaFS(Operations):
                 os.rename(old_finfo, new_finfo)
 
             os.rename(full_old_path, full_new_path)
+
+            if full_old_path in self.enc_files:
+                self.enc_files.rename(full_old_path, full_new_path)
             
             if full_old_path in self.enc_info:
                 self.enc_info[full_old_path].rename(full_new_path, new_public_metadata, new_finfo)
+                self.enc_info[full_new_path] = self.enc_info[full_old_path]
+                del self.enc_info[full_old_path]
         else:
             # Rinomino una cartella
             old_metadata_path = self._metadata_full_path(old)
