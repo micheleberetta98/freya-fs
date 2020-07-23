@@ -20,6 +20,11 @@ parser.add_argument('-m', '--metadata',
                     If not specified, the --data folder will be used.''',
                     default=None
                     )
+parser.add_argument('-t', '--multithread',
+                    help='Run in multi-threaded mode (default FALSE)',
+                    action='store_true',
+                    default=False
+                    )
 
 args = parser.parse_args()
 
@@ -29,4 +34,4 @@ if __name__ == '__main__':
     mountpoint = args.mountpoint
 
     FUSE(FreyaFS(data, metadata), mountpoint,
-         nothreads=True, foreground=True)
+         nothreads=not args.multithread, foreground=True)
