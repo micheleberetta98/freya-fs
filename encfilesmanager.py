@@ -3,6 +3,7 @@ import threading
 
 from aesmix import MixSlice
 from time import time
+from filebytecontent import FileByteContent
 
 LOCK = threading.Lock()
 
@@ -31,7 +32,7 @@ class EncFilesManager():
         return reader.decrypt()
 
     def _encrypt(self, path):
-        plaintext = self.open_files[path]
+        plaintext = self.open_files[path].read_all()
         public_metafile = self.public_metafiles[path]
         private_metafile = self.private_metafiles[path]
 
@@ -49,7 +50,7 @@ class EncFilesManager():
             self.public_metafiles[path] = public_metafile_path
             self.private_metafiles[path] = private_metafile_path
 
-            self.open_files[path] = self._decrypt(path)
+            self.open_files[path] = FileByteContent(self._decrypt(path))
             self.open_counters[path] = 1
         
         self.touched_files[path] = False
@@ -62,7 +63,7 @@ class EncFilesManager():
                 self.public_metafiles[path] = public_metafile_path
                 self.private_metafiles[path] = private_metafile_path
                 
-                self.open_files[path] = b''
+                self.open_files[path] = FileByteContent(b'')
                 self.open_counters[path] = 1
                 
                 self.atimes[path] = int(time())
@@ -78,22 +79,14 @@ class EncFilesManager():
             if path not in self.open_files:
                 return None
 
-            plaintext = self.open_files[path]
-
-        return plaintext[offset:offset + length]
+        return self.open_files[path].read_bytes(offset, length)
 
     def write_bytes(self, path, buf, offset):
-        bytes_written = len(buf)
-        
         with LOCK:
             if path not in self.open_files:
                 return 0
 
-            plaintext = self.open_files[path]
-            new_text = plaintext[:offset] + buf + \
-                plaintext[offset+bytes_written:]
-
-            self.open_files[path] = new_text
+        bytes_written = self.open_files[path].write_bytes(buf, offset)
         
         self.touched_files[path] = True
         self.mtimes[path] = int(time())
@@ -105,8 +98,7 @@ class EncFilesManager():
             if path not in self.open_files:
                 return
 
-            plaintext = self.open_files[path]
-            self.open_files[path] = plaintext[:length]
+        self.open_files[path].truncate(length)
         
         self.touched_files[path] = True
         self.mtimes[path] = int(time())
@@ -154,8 +146,7 @@ class EncFilesManager():
             if path not in self.open_files:
                 return 0
 
-            length = len(self.open_files[path])
-        return length
+        return len(self.open_files[path])
 
     def rename(self, old, new):
         with LOCK:
