@@ -18,7 +18,7 @@ class FileByteContent:
         try:
             self._readers -= 1
             if self._readers == 0:
-                self._cond.notifyAll()
+                self._cond.notify_all()
         finally:
             self._cond.release()
 
